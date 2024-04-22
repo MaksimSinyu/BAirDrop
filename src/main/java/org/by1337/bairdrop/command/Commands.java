@@ -339,6 +339,7 @@ public class Commands implements CommandExecutor {
 
             }
 
+
             if (args[0].equals("tp")) {
                 if (!pl.hasPermission("bair.tp")) {
                     Message.sendMsg(pl, BAirDrop.getConfigMessage().getMessage("no-prem"));
@@ -413,6 +414,50 @@ public class Commands implements CommandExecutor {
                     return true;
                 }
                 GeneratorLoc.Start(BAirDrop.airDrops.get(args[1]), timings, count, pl);
+                return true;
+            }
+            if (args[0].equals("pauseOpening")) {
+                if (!pl.hasPermission("bair.pauseOpening")) {
+                    Message.sendMsg(pl, BAirDrop.getConfigMessage().getMessage("no-prem"));
+                    return true;
+                }
+                if (args.length == 1) {
+                    Message.sendMsg(pl, BAirDrop.getConfigMessage().getMessage("few-arguments"));
+                    return true;
+                }
+                if (BAirDrop.airDrops.containsKey(args[1])) {
+                    AirDrop airDrop = BAirDrop.airDrops.get(args[1]);
+                    if (airDrop.isAirDropStarted()) {
+                        airDrop.pauseOpening();
+                        Message.sendMsg(pl, String.format(BAirDrop.getConfigMessage().getMessage("airdrop-paused-opening"), args[1]));
+                    } else {
+                        Message.sendMsg(pl, BAirDrop.getConfigMessage().getMessage("airdrop-is-not-started"));
+                    }
+                } else {
+                    Message.sendMsg(pl, String.format(BAirDrop.getConfigMessage().getMessage("unknown-airdrop"), args[1]));
+                }
+                return true;
+            }
+            if (args[0].equals("resumeOpening")) {
+                if (!pl.hasPermission("bair.resumeOpening")) {
+                    Message.sendMsg(pl, BAirDrop.getConfigMessage().getMessage("no-prem"));
+                    return true;
+                }
+                if (args.length == 1) {
+                    Message.sendMsg(pl, BAirDrop.getConfigMessage().getMessage("few-arguments"));
+                    return true;
+                }
+                if (BAirDrop.airDrops.containsKey(args[1])) {
+                    AirDrop airDrop = BAirDrop.airDrops.get(args[1]);
+                    if (airDrop.isAirDropStarted()) {
+                        airDrop.resumeOpening();
+                        Message.sendMsg(pl, String.format(BAirDrop.getConfigMessage().getMessage("airdrop-resumed-opening"), args[1]));
+                    } else {
+                        Message.sendMsg(pl, BAirDrop.getConfigMessage().getMessage("airdrop-is-not-started"));
+                    }
+                } else {
+                    Message.sendMsg(pl, String.format(BAirDrop.getConfigMessage().getMessage("unknown-airdrop"), args[1]));
+                }
                 return true;
             }
         } else {

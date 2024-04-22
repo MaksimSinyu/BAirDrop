@@ -28,7 +28,7 @@ public class Completer implements TabCompleter {
             if (args.length == 2 && args[0].equals("js")) return BAirDrop.getiConfig().getScripts().values().stream().map(File::getName).collect(Collectors.toList());
             if (args.length == 2 && !args[0].equals("get") && !args[0].equals("compass")) return list;
             if (args.length == 1 ) {
-                return List.of("menu", "start", "stop", "tp", "listeners", "generate", "reload", "clone", "get", "delete", "create", "compass", "js", "help");
+                return List.of("menu", "start", "stop", "tp", "listeners", "generate", "reload", "clone", "get", "delete", "create", "compass", "js", "help", "pauseOpening", "resumeOpening");
             }
             if (args.length == 2) return BAirDrop.summoner.getItems().keySet().stream().toList();
         }else {
@@ -36,7 +36,7 @@ public class Completer implements TabCompleter {
             if (args.length == 2 && args[0].equals("js")) return BAirDrop.getiConfig().getScripts().values().stream().map(File::getName).collect(Collectors.toList());
             if (args.length == 2 && !args[0].equals("get")) return list;
             if (args.length == 1 ) {
-                return List.of("start", "stop", "generate", "reload", "clone", "delete", "create", "get", "compass", "js");
+                return List.of("start", "stop", "generate", "reload", "clone", "delete", "create", "get", "compass", "js", "pauseOpening", "resumeOpening");
             }
             if (args[0].equals("get")) return BAirDrop.summoner.getItems().keySet().stream().toList();
         }

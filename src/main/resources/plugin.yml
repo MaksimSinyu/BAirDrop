@@ -35,6 +35,8 @@ permissions:
       bair.clone: true
       bair.compass: true
       bair.js: true
+      bair.pauseOpening: true
+      bair.resumeOpening: true
   bair.js:
     description: /bair js
     default: op
@@ -79,4 +81,10 @@ permissions:
     default: op
   bair.compass:
     description: /bair compass <player> <amount>
+    default: op
+  bair.pauseOpening:
+    description: /bair pauseOpening <id>
+    default: op
+  bair.resumeOpening:
+    description: /bair resumeOpening <id>
     default: op

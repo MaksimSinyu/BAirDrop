@@ -399,6 +399,10 @@ public interface AirDrop extends Observable {
 
     void setTimeToUnlockCons(int timeToUnlockCons);
 
+    void pauseOpening();
+
+    void resumeOpening();
+
     void setSearchBeforeStartCons(int searchBeforeStartCons);
 
     String getInventoryTitle();

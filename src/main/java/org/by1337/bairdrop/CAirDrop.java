@@ -63,6 +63,7 @@ public class CAirDrop implements AirDrop, StateSerializable {
     private int timeToOpen;
     private boolean startCountdownAfterClick;
     private boolean timeStopEventMustGo;
+    private boolean isPaused;
     private int timeStop;
     private Material materialLocked;
     private Material materialUnlocked;
@@ -95,6 +96,7 @@ public class CAirDrop implements AirDrop, StateSerializable {
     private EditSession editSession = null;
     private String generatorSettings;
     private List<String> airHolo = new ArrayList<>();
+    private List<String> airHoloPaused = new ArrayList<>();
     private List<String> airHoloOpen = new ArrayList<>();
     private List<String> airHoloClickWait = new ArrayList<>();
     private List<String> airHoloToStart = new ArrayList<>();
@@ -196,6 +198,7 @@ public class CAirDrop implements AirDrop, StateSerializable {
             inventory = Bukkit.createInventory(null, inventorySize, Message.messageBuilder(inventoryTitle));
 
             airHolo = fileConfiguration.getStringList("air-holo");
+            airHoloPaused = fileConfiguration.getStringList("air-holo-paused");
             airHoloOpen = fileConfiguration.getStringList("air-holo-open");
             airHoloClickWait = fileConfiguration.getStringList("air-holo-click-wait");
             airHoloToStart = fileConfiguration.getStringList("air-holo-to-start");
@@ -280,6 +283,7 @@ public class CAirDrop implements AirDrop, StateSerializable {
             generatorSettings = "default";
             spawnChance = 50; //50
             airHolo = BAirDrop.getConfigMessage().getList("air-holo");
+            airHoloPaused = BAirDrop.getConfigMessage().getList("air-holo-paused");
             airHoloOpen = BAirDrop.getConfigMessage().getList("air-holo-open");
             airHoloClickWait = BAirDrop.getConfigMessage().getList("air-holo-click-wait");
             airHoloToStart = BAirDrop.getConfigMessage().getList("air-holo-to-start");
@@ -300,96 +304,139 @@ public class CAirDrop implements AirDrop, StateSerializable {
         new BukkitRunnable() {
             @Override
             public void run() {
+                if (airDropStarted && airDropLocked) {
+                    List<String> lines = new ArrayList<>(isPaused ? airHoloPaused : airHolo);
+                    lines.replaceAll(s -> replaceInternalPlaceholder(s));
+                    BAirDrop.hologram.createOrUpdateHologram(lines, airDropLocation.clone().add(holoOffsets), id);
+                }
+                if (isPaused) {
+                    return;
+                }
                 locationSearch();
+                handleStartCountdown();
+                handleUnlockCountdown();
+                handleEndCountdown();
+                handleStopWhenEmpty();
+                handleCloseInventoryForFarPlayers();
+                notifyObservers(CustomEvent.TIMER, null);
                 synchronized (this) {
                     if (canceled) {
                         cancel();
-                        if (EditAirMenu != null) {
-                            EditAirMenu.unReg();
-                            EditAirMenu.getInventory().clear();
-                        }
-                        if (isAirDropStarted())
-                            End();
+                        cleanUpResources();
                         if (clone) {
                             notifyObservers(CustomEvent.UNLOAD, null);
                             airDrops.remove(id);
                         }
                         return;
                     }
-                    if (!airDropStarted && timeToStart <= 0) {
-                        start();
-                        updateEditAirMenu("stats");
-                    } else if (Bukkit.getOnlinePlayers().size() >= minPlayersToStart && !airDropStarted && (timeCountingEnabled || summoner)) {
-                        timeToStart--;
-                        if (holoTimeToStartEnabled) {
-                            List<String> lines = new ArrayList<>(airHoloToStart);
-                            lines.replaceAll(s -> replaceInternalPlaceholder(s));
+                }
+            }
+        }.runTaskTimer(BAirDrop.getInstance(), 20, 20); // 20 20
+    }
+    private void handleStartCountdown() {
+        if (isPaused) {
+            return;
+        }
+        locationSearch();
+        if (!airDropStarted && timeToStart <= 0) {
+            start();
+            updateEditAirMenu("stats");
+        } else if (Bukkit.getOnlinePlayers().size() >= minPlayersToStart && !airDropStarted && (timeCountingEnabled || summoner)) {
+            timeToStart--;
+            if (holoTimeToStartEnabled) {
+                displayTimeToStartHologram();
+            }
+            updateEditAirMenu("stats");
+        }
+    }
 
-                            if (!holoTimeToStartMinusOffsets) {
-                                BAirDrop.hologram.createOrUpdateHologram(lines, getAnyLoc().clone().add(holoOffsets), id);
-                            } else {
-                                BAirDrop.hologram.createOrUpdateHologram(lines, getAnyLoc().clone().add(holoOffsets).add(
-                                        -GeneratorUtils.getSettings(getGeneratorSettings(), String.format("%s.offsets.x", GeneratorUtils.getWorldKeyByWorld(getAnyLoc().getWorld()))),
-                                        -GeneratorUtils.getSettings(getGeneratorSettings(), String.format("%s.offsets.y", GeneratorUtils.getWorldKeyByWorld(getAnyLoc().getWorld()))),
-                                        -GeneratorUtils.getSettings(getGeneratorSettings(), String.format("%s.offsets.z", GeneratorUtils.getWorldKeyByWorld(getAnyLoc().getWorld())))).add(0, 1, 0), id);
-                            }
-                        }
+    private void displayTimeToStartHologram() {
+        List<String> lines = new ArrayList<>(airHoloToStart);
+        lines.replaceAll(this::replaceInternalPlaceholder);
+        if (!holoTimeToStartMinusOffsets) {
+            BAirDrop.hologram.createOrUpdateHologram(lines, getAnyLoc().clone().add(holoOffsets), id);
+        } else {
+            Location holoLocation = getAnyLoc().clone().add(holoOffsets)
+                    .add(-GeneratorUtils.getSettings(getGeneratorSettings(), String.format("%s.offsets.x", GeneratorUtils.getWorldKeyByWorld(getAnyLoc().getWorld()))),
+                            -GeneratorUtils.getSettings(getGeneratorSettings(), String.format("%s.offsets.y", GeneratorUtils.getWorldKeyByWorld(getAnyLoc().getWorld()))),
+                            -GeneratorUtils.getSettings(getGeneratorSettings(), String.format("%s.offsets.z", GeneratorUtils.getWorldKeyByWorld(getAnyLoc().getWorld()))))
+                    .add(0, 1, 0);
+            BAirDrop.hologram.createOrUpdateHologram(lines, holoLocation, id);
+        }
+    }
 
-                        updateEditAirMenu("stats");
-                    }
+    private void handleUnlockCountdown() {
+        if (airDropStarted && airDropLocked && timeToOpen <= 0) {
+            unlock();
+            updateEditAirMenu("stats");
+        } else if (airDropStarted && airDropLocked && (!startCountdownAfterClick || activated)) {
+            timeToOpen--;
+            displayUnlockHologram();
+            updateEditAirMenu("stats");
+        } else if (startCountdownAfterClick && airDropLocked && airDropStarted) {
+            displayClickWaitHologram();
+        }
+    }
 
-                    if (airDropStarted && airDropLocked && timeToOpen <= 0) {
-                        unlock();
-                        updateEditAirMenu("stats");
-                    } else if (airDropStarted && airDropLocked && (!startCountdownAfterClick || activated)) {
-                        timeToOpen--;
-                        List<String> lines = new ArrayList<>(airHolo);
-                        lines.replaceAll(s -> replaceInternalPlaceholder(s));
-                        BAirDrop.hologram.createOrUpdateHologram(lines, airDropLocation.clone().add(holoOffsets), id);
-                        updateEditAirMenu("stats");
-                    } else if (startCountdownAfterClick && airDropLocked && airDropStarted) {
-                        List<String> lines = new ArrayList<>(airHoloClickWait);
-                        lines.replaceAll(s -> replaceInternalPlaceholder(s));
-                        BAirDrop.hologram.createOrUpdateHologram(lines, airDropLocation.clone().add(holoOffsets), id);
+    private void displayUnlockHologram() {
+        List<String> lines = new ArrayList<>(airHolo);
+        lines.replaceAll(this::replaceInternalPlaceholder);
+        BAirDrop.hologram.createOrUpdateHologram(lines, airDropLocation.clone().add(holoOffsets), id);
+    }
 
-                    }
+    private void displayClickWaitHologram() {
+        List<String> lines = new ArrayList<>(airHoloClickWait);
+        lines.replaceAll(this::replaceInternalPlaceholder);
+        BAirDrop.hologram.createOrUpdateHologram(lines, airDropLocation.clone().add(holoOffsets), id);
+    }
 
-                    if (timeStop <= 0) {
-                        End();
-                        updateEditAirMenu("stats");
+    private void handleEndCountdown() {
+        if (timeStop <= 0) {
+            End();
+            updateEditAirMenu("stats");
+        } else if (!airDropLocked || timeStopEventMustGo && airDropStarted) {
+            timeStop--;
+            updateEditAirMenu("stats");
+        }
+    }
 
-                    } else if (!airDropLocked || timeStopEventMustGo && airDropStarted) {
-                        timeStop--;
-                        updateEditAirMenu("stats");
-                    }
-                    notifyObservers(CustomEvent.TIMER, null);
-                    if (isStopWhenEmpty() && isAirDropStarted()) {
-                        boolean stop = false;
-                        for (ItemStack itemStack : inventory) {
-                            if (itemStack != null) {
-                                stop = false;
-                                break;
-                            } else stop = true;
-                        }
-                        if (stop) {
-                            stopWhenEmpty_event = true;
-                            notifyObservers(CustomEvent.STOP_WHEN_EMPTY, null);
-                            End();
-                        }
-                    }
-                    if (airDropStarted) {
-                        List<HumanEntity> heList = new ArrayList<>(getInventory().getViewers());
-                        for (HumanEntity he : heList) {
-                            if (he instanceof Player pl) {
-                                if (getAirDropLocation().distance(pl.getLocation()) > 10D) {
-                                    pl.closeInventory();
-                                }
-                            }
-                        }
+    private void handleStopWhenEmpty() {
+        if (isStopWhenEmpty() && isAirDropStarted()) {
+            boolean shouldStop = true;
+            for (ItemStack itemStack : inventory) {
+                if (itemStack != null) {
+                    shouldStop = false;
+                    break;
+                }
+            }
+            if (shouldStop) {
+                stopWhenEmpty_event = true;
+                notifyObservers(CustomEvent.STOP_WHEN_EMPTY, null);
+                End();
+            }
+        }
+    }
+    private void handleCloseInventoryForFarPlayers() {
+        if (airDropStarted) {
+            List<HumanEntity> viewers = new ArrayList<>(getInventory().getViewers());
+            for (HumanEntity viewer : viewers) {
+                if (viewer instanceof Player player) {
+                    if (getAirDropLocation().distance(player.getLocation()) > 10D) {
+                        player.closeInventory();
                     }
                 }
             }
-        }.runTaskTimer(BAirDrop.getInstance(), 20, 20);//20 20
+        }
+    }
+
+    private void cleanUpResources() {
+        if (EditAirMenu != null) {
+            EditAirMenu.unReg();
+            EditAirMenu.getInventory().clear();
+        }
+        if (isAirDropStarted()) {
+            End();
+        }
     }
 
     private BukkitTask bukkitTaskStart = null;
@@ -451,6 +498,7 @@ public class CAirDrop implements AirDrop, StateSerializable {
             fileConfiguration.set("static-location.world", staticLocation.getWorld().getName());
         }
         fileConfiguration.set("air-holo", airHolo);
+        fileConfiguration.set("air-holo-paused", airHoloPaused);
         fileConfiguration.set("air-holo-open", airHoloOpen);
         fileConfiguration.set("air-holo-click-wait", airHoloClickWait);
         fileConfiguration.set("air-holo-to-start", airHoloToStart);
@@ -710,6 +758,9 @@ public class CAirDrop implements AirDrop, StateSerializable {
             return str;
         if (str.contains("\\{")){
             return str.replace("\\", "");
+        }
+        if (str.contains("{paused-state}")) {
+            str = str.replace("{paused-state}", isPaused ? "&cPaused!" : "&cClosed!");
         }
         StringBuilder sb = new StringBuilder(str);
 
@@ -1634,6 +1685,7 @@ public class CAirDrop implements AirDrop, StateSerializable {
         this.timeToUnlockCons = timeToUnlockCons;
     }
 
+
     @Override
     public void setSearchBeforeStartCons(int searchBeforeStartCons) {
         this.searchBeforeStartCons = searchBeforeStartCons;
@@ -1938,6 +1990,15 @@ public class CAirDrop implements AirDrop, StateSerializable {
     }
     public void addDec(String... s){
         dec.addAll(List.of(s));
+    }
+
+    public void pauseOpening(){
+        isPaused = true;
+    }
+
+    public void resumeOpening()
+    {
+        isPaused = false;
     }
 
     public List<String> getDec() {
